@@ -1,0 +1,619 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Barangay-Level Smallholders Rice and Corn Counts | Cagayan Valley</title>
+
+  <!-- Leaflet CSS -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+  <!-- MarkerCluster CSS -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css"/>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css"/>
+  <!-- Fonts -->
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@300;400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet"/>
+  <!-- Custom CSS -->
+  <link rel="stylesheet" href="style.css"/>
+</head>
+<body>
+
+<!-- ===== HEADER ===== -->
+<header id="app-header">
+  <div class="header-left">
+    <div class="header-logo">
+      <svg width="36" height="36" viewBox="0 0 36 36" fill="none">
+        <rect width="36" height="36" rx="8" fill="#1a6e3c"/>
+        <path d="M18 6c0 0-8 6-8 14 0 5 3.6 9 8 9s8-4 8-9c0-8-8-14-8-14z" fill="#f7c54e" opacity="0.9"/>
+        <path d="M12 20c0 0 3-2 6-2s6 2 6 2" stroke="white" stroke-width="1.5" stroke-linecap="round"/>
+        <circle cx="18" cy="8" r="2" fill="white" opacity="0.7"/>
+      </svg>
+    </div>
+    <div class="header-text">
+       <h1>Cagayan Valley Barangay-Level Smallholders (below half hectare) Rice and Corn Counts</h1>
+      <p class="header-subtitle">Cagayan Valley (Region II) — Interactive Agricultural Planning Map</p>
+    </div>
+  </div>
+  <div class="header-right">
+    <div class="header-meta">
+      <span class="meta-badge">DA-RFO II</span>
+      <span class="meta-date" id="last-updated">Updated: —</span>
+    </div>
+    <div class="header-actions">
+      <button class="btn-icon btn-upload-data" id="open-upload-modal" title="Upload Data Files">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+        <span>Upload Data</span>
+      </button>
+      <button class="btn-icon btn-upload-highlight" id="open-upload-modal-highlight" title="Upload your GeoJSON and CSV data files">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+        <span>Upload Data</span>
+      </button>
+      <button class="btn-icon" id="exec-mode-toggle" title="Executive Presentation Mode">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 9h6M9 12h6M9 15h4"/></svg>
+        <span>Exec Mode</span>
+      </button>
+      <button class="btn-icon" id="sidebar-toggle" title="Toggle Sidebar">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+        <span>Panels</span>
+      </button>
+    </div>
+  </div>
+</header>
+
+<!-- ===== MAIN LAYOUT ===== -->
+<div id="app-layout">
+
+  <!-- ===== LEFT SIDEBAR ===== -->
+  <aside id="sidebar-left">
+
+    <!-- View Level Control -->
+    <div class="panel">
+      <div class="panel-header">
+        <span class="panel-icon">🗺️</span>
+        <span>View Level</span>
+      </div>
+      <div class="view-level-group">
+        <label class="view-level-option active" data-level="barangay">
+          <input type="radio" name="view-level" value="barangay" checked/>
+          <span class="vl-icon">🏘️</span>
+          <span class="vl-label">Barangay</span>
+        </label>
+        <label class="view-level-option" data-level="municipality">
+          <input type="radio" name="view-level" value="municipality"/>
+          <span class="vl-icon">🏙️</span>
+          <span class="vl-label">Municipality</span>
+        </label>
+        <label class="view-level-option" data-level="province">
+          <input type="radio" name="view-level" value="province"/>
+          <span class="vl-icon">🏛️</span>
+          <span class="vl-label">Province</span>
+        </label>
+      </div>
+      <p class="panel-note">Barangay: individual records. Municipality: aggregated per municipality/city. Province: aggregated per province.</p>
+    </div>
+
+    <!-- Filters -->
+    <div class="panel" id="filter-panel">
+      <div class="panel-header collapsible" data-target="filter-body">
+        <span class="panel-icon">🔽</span>
+        <span>Administrative Filters</span>
+        <span class="collapse-arrow">▾</span>
+      </div>
+      <div class="panel-body" id="filter-body">
+        <div class="form-group">
+          <label>Province</label>
+          <select id="filter-province">
+            <option value="">— All Provinces —</option>
+          </select>
+        </div>
+        <div class="form-group" id="fg-municipality">
+          <label>Municipality / City</label>
+          <select id="filter-municipality">
+            <option value="">— All Municipalities —</option>
+          </select>
+        </div>
+        <div class="form-group" id="fg-barangay">
+          <label>Barangay</label>
+          <select id="filter-barangay">
+            <option value="">— All Barangays —</option>
+          </select>
+        </div>
+        <button class="btn-secondary full-width" id="reset-filters">↺ Reset Filters</button>
+      </div>
+    </div>
+
+    <!-- Map Variable -->
+    <div class="panel">
+      <div class="panel-header collapsible" data-target="var-body">
+        <span class="panel-icon">📊</span>
+        <span>Map Variable</span>
+        <span class="collapse-arrow">▾</span>
+      </div>
+      <div class="panel-body" id="var-body">
+        <div class="form-group">
+          <label>Show Variable</label>
+          <select id="map-variable">
+            <option value="total_farmers" selected>Total Rice + Corn Farmers</option>
+            <option value="rice_farmers">Rice Farmers</option>
+            <option value="corn_farmers">Corn Farmers</option>
+            <option value="rice_share_percent">Rice Share %</option>
+            <option value="corn_share_percent">Corn Share %</option>
+            <option value="rice_to_corn_ratio">Rice-to-Corn Ratio</option>
+            <option value="corn_to_rice_ratio">Corn-to-Rice Ratio</option>
+            <option value="dominant_crop">Dominant Crop</option>
+            <option value="priority_class">Priority Class</option>
+            <option value="data_quality">Data Quality</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Map Style</label>
+          <select id="map-style">
+            <option value="choropleth" selected>Choropleth</option>
+            <option value="gradient">Continuous Gradient</option>
+            <option value="proportional">Proportional Circle</option>
+            <option value="graduated">Graduated Symbol</option>
+            <option value="dominant">Dominant Crop Map</option>
+            <option value="bivariate">Bivariate Rice-Corn</option>
+            <option value="pie">Pie Chart Symbols</option>
+            <option value="bar">Bar Chart Symbols</option>
+            <option value="ranked">Ranked Highlight</option>
+            <option value="deviation">Deviation from Average</option>
+            <option value="ratio">Ratio Map</option>
+            <option value="priority">Planning Priority Map</option>
+            <option value="boundary">Boundary Only</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Classification</label>
+          <select id="classification-method">
+            <option value="quantile" selected>Quantile</option>
+            <option value="equalInterval">Equal Interval</option>
+            <option value="naturalBreaks">Natural Breaks (Jenks)</option>
+            <option value="stdDev">Standard Deviation</option>
+            <option value="continuous">Continuous Scale</option>
+          </select>
+        </div>
+        <div class="form-group" id="ranked-options" style="display:none">
+          <label>Top N Barangays</label>
+          <select id="ranked-n">
+            <option value="10">Top 10</option>
+            <option value="20">Top 20</option>
+            <option value="50">Top 50</option>
+          </select>
+        </div>
+        <div class="form-group" id="deviation-options" style="display:none">
+          <label>Compare vs.</label>
+          <select id="deviation-base">
+            <option value="regional">Regional Average</option>
+            <option value="provincial">Provincial Average</option>
+            <option value="municipal">Municipal Average</option>
+          </select>
+        </div>
+        <div class="form-group" id="priority-var-options">
+          <label>Priority Based On</label>
+          <select id="priority-variable">
+            <option value="total_farmers">Total Farmers</option>
+            <option value="rice_farmers">Rice Farmers</option>
+            <option value="corn_farmers">Corn Farmers</option>
+            <option value="dominant_crop">Dominant Crop</option>
+            <option value="rice_to_corn_ratio">Rice-to-Corn Ratio</option>
+            <option value="corn_to_rice_ratio">Corn-to-Rice Ratio</option>
+          </select>
+        </div>
+      </div>
+    </div>
+
+    <!-- Basemap -->
+    <div class="panel">
+      <div class="panel-header collapsible" data-target="basemap-body">
+        <span class="panel-icon">🗾</span>
+        <span>Basemap</span>
+        <span class="collapse-arrow">▾</span>
+      </div>
+      <div class="panel-body" id="basemap-body">
+        <div class="basemap-grid">
+          <button class="basemap-btn active" data-basemap="carto-light">
+            <span class="bm-preview bm-carto-light"></span>
+            <span>Carto Light</span>
+          </button>
+          <button class="basemap-btn" data-basemap="osm">
+            <span class="bm-preview bm-osm"></span>
+            <span>OpenStreetMap</span>
+          </button>
+          <button class="basemap-btn" data-basemap="carto-dark">
+            <span class="bm-preview bm-carto-dark"></span>
+            <span>Carto Dark</span>
+          </button>
+          <button class="basemap-btn" data-basemap="esri-imagery">
+            <span class="bm-preview bm-esri-img"></span>
+            <span>Esri Imagery</span>
+          </button>
+          <button class="basemap-btn" data-basemap="esri-topo">
+            <span class="bm-preview bm-esri-topo"></span>
+            <span>Esri Topo</span>
+          </button>
+          <button class="basemap-btn" data-basemap="otopo">
+            <span class="bm-preview bm-otopo"></span>
+            <span>OpenTopoMap</span>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Search -->
+    <div class="panel">
+      <div class="panel-header">
+        <span class="panel-icon">🔍</span>
+        <span>Search</span>
+      </div>
+      <div class="search-container">
+        <input type="text" id="search-input" placeholder="Search barangay, municipality, province…"/>
+        <div id="search-results" class="search-results hidden"></div>
+      </div>
+    </div>
+
+    <!-- Export Tools -->
+    <div class="panel">
+      <div class="panel-header collapsible" data-target="export-body">
+        <span class="panel-icon">💾</span>
+        <span>Export</span>
+        <span class="collapse-arrow">▾</span>
+      </div>
+      <div class="panel-body" id="export-body">
+        <button class="btn-secondary full-width" id="export-csv">📥 Export CSV</button>
+        <button class="btn-secondary full-width" id="export-geojson">📥 Export GeoJSON</button>
+        <button class="btn-secondary full-width" id="print-map">🖨️ Print Map</button>
+      </div>
+    </div>
+
+  </aside>
+
+  <!-- ===== MAP CONTAINER ===== -->
+  <main id="map-wrapper">
+    <div id="map"></div>
+
+    <!-- Legend overlay -->
+    <div id="legend-panel">
+      <div id="legend-title">Legend</div>
+      <div id="legend-content"></div>
+    </div>
+
+    <!-- Map attribution note -->
+    <div id="map-note">
+      ℹ️ This map shows recorded rice and corn farmers by barangay. It does not represent production volume, planted area, or yield unless separately added.
+    </div>
+  </main>
+
+  <!-- ===== RIGHT PANEL ===== -->
+  <aside id="sidebar-right">
+
+    <!-- Dashboard Cards -->
+    <div class="panel">
+      <div class="panel-header">
+        <span class="panel-icon">📋</span>
+        <span id="dashboard-title">Barangay Summary</span>
+      </div>
+      <div id="dashboard-cards" class="dashboard-cards">
+        <div class="card card-total">
+          <div class="card-label">Total Farmers</div>
+          <div class="card-value" id="dc-total">—</div>
+        </div>
+        <div class="card card-rice">
+          <div class="card-label">Rice Farmers</div>
+          <div class="card-value" id="dc-rice">—</div>
+        </div>
+        <div class="card card-corn">
+          <div class="card-label">Corn Farmers</div>
+          <div class="card-value" id="dc-corn">—</div>
+        </div>
+        <div class="card card-units">
+          <div class="card-label" id="dc-units-label">Barangays</div>
+          <div class="card-value" id="dc-units">—</div>
+        </div>
+        <div class="card card-rice-dom">
+          <div class="card-label">Rice-Dominant</div>
+          <div class="card-value" id="dc-rice-dom">—</div>
+        </div>
+        <div class="card card-corn-dom">
+          <div class="card-label">Corn-Dominant</div>
+          <div class="card-value" id="dc-corn-dom">—</div>
+        </div>
+        <div class="card card-balanced">
+          <div class="card-label">Balanced</div>
+          <div class="card-value" id="dc-balanced">—</div>
+        </div>
+        <div class="card card-nodata">
+          <div class="card-label">No Data</div>
+          <div class="card-value" id="dc-nodata">—</div>
+        </div>
+      </div>
+      <div id="dashboard-highlights" class="dashboard-highlights">
+        <div class="highlight-row"><span class="hl-label">🌾 Highest Rice:</span><span id="hl-rice">—</span></div>
+        <div class="highlight-row"><span class="hl-label">🌽 Highest Corn:</span><span id="hl-corn">—</span></div>
+        <div class="highlight-row"><span class="hl-label">🏆 Highest Total:</span><span id="hl-total">—</span></div>
+        <div class="highlight-row"><span class="hl-label">Avg Rice/Unit:</span><span id="hl-avg-rice">—</span></div>
+        <div class="highlight-row"><span class="hl-label">Avg Corn/Unit:</span><span id="hl-avg-corn">—</span></div>
+      </div>
+    </div>
+
+    <!-- Charts -->
+    <div class="panel" id="chart-panel">
+      <div class="panel-header collapsible" data-target="chart-body">
+        <span class="panel-icon">📈</span>
+        <span>Charts</span>
+        <span class="collapse-arrow">▾</span>
+      </div>
+      <div class="panel-body" id="chart-body">
+        <div class="form-group">
+          <label>Chart Type</label>
+          <select id="chart-type">
+            <option value="top10-rice">Top 10 by Rice Farmers</option>
+            <option value="top10-corn">Top 10 by Corn Farmers</option>
+            <option value="top10-total" selected>Top 10 by Total Farmers</option>
+            <option value="rice-corn-compare">Rice vs Corn Total</option>
+            <option value="dominant-breakdown">Dominant Crop Breakdown</option>
+            <option value="priority-breakdown">Priority Class Breakdown</option>
+          </select>
+        </div>
+        <div id="chart-container">
+          <canvas id="main-chart" width="280" height="200"></canvas>
+        </div>
+      </div>
+    </div>
+
+    <!-- Data Table -->
+    <div class="panel" id="table-panel">
+      <div class="panel-header collapsible" data-target="table-body">
+        <span class="panel-icon">📃</span>
+        <span id="table-title">Ranking Table</span>
+        <span class="collapse-arrow">▾</span>
+      </div>
+      <div class="panel-body" id="table-body">
+        <div class="table-controls">
+          <input type="text" id="table-search" placeholder="Search table…"/>
+          <select id="table-sort-col">
+            <option value="total_farmers">Sort: Total</option>
+            <option value="rice_farmers">Sort: Rice</option>
+            <option value="corn_farmers">Sort: Corn</option>
+            <option value="name">Sort: Name</option>
+          </select>
+          <button class="btn-icon-small" id="table-sort-dir" title="Toggle Sort Direction">⇅</button>
+        </div>
+        <div id="ranking-table-container">
+          <table id="ranking-table">
+            <thead id="ranking-thead"></thead>
+            <tbody id="ranking-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- Data Validation Panel -->
+    <div class="panel" id="validation-panel">
+      <div class="panel-header collapsible" data-target="validation-body">
+        <span class="panel-icon">✅</span>
+        <span>Data Validation</span>
+        <span class="collapse-arrow">▾</span>
+      </div>
+      <div class="panel-body collapsed" id="validation-body">
+        <div id="validation-content" class="validation-content">
+          <em>Loading data validation…</em>
+        </div>
+      </div>
+    </div>
+
+    <!-- Interpretation -->
+    <div class="panel" id="interpretation-panel">
+      <div class="panel-header collapsible" data-target="interp-body">
+        <span class="panel-icon">📝</span>
+        <span>Planning Interpretation</span>
+        <span class="collapse-arrow">▾</span>
+      </div>
+      <div class="panel-body collapsed" id="interp-body">
+        <div id="interpretation-text" class="interpretation-text">
+          <em>Loading interpretation…</em>
+        </div>
+      </div>
+    </div>
+
+  </aside>
+</div>
+
+
+<!-- ===== DATA UPLOAD MODAL ===== -->
+<div id="upload-modal" class="modal-backdrop">
+  <div class="modal-box">
+    <div class="modal-header">
+      <div class="modal-title-group">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#1a6e3c" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+        <div>
+          <h2>Upload Your Data Files</h2>
+          <p>Load your GeoJSON boundaries and CSV farmer data — all processed locally in your browser.</p>
+        </div>
+      </div>
+      <button class="modal-close" id="modal-close-btn">&#x2715;</button>
+    </div>
+
+    <div class="modal-tabs">
+      <button class="mtab active" data-tab="upload-tab">&#x1F4C2; Upload Files</button>
+      <button class="mtab" data-tab="fields-tab">&#x2699;&#xFE0F; Field Mapping</button>
+      <button class="mtab" data-tab="status-tab">&#x2705; Status</button>
+    </div>
+
+    <!-- TAB 1: UPLOAD FILES -->
+    <div class="modal-tab-body" id="upload-tab">
+      <div class="upload-grid">
+
+        <div class="upload-card" id="uc-barangay">
+          <div class="uc-label">
+            <span class="uc-badge required-badge">Required</span>
+            <span class="uc-title">&#x1F3D8;&#xFE0F; Barangay Boundaries</span>
+          </div>
+          <div class="uc-sub">GeoJSON polygon file of all barangays</div>
+          <div class="drop-zone" id="dz-barangay" data-slot="barangay">
+            <div class="dz-icon">&#x1F4C4;</div>
+            <div class="dz-text">Drag &amp; drop GeoJSON here<br><span>or click to browse</span></div>
+            <div class="dz-formats">Accepted: .geojson .json</div>
+            <input type="file" class="dz-input" id="fi-barangay" accept=".geojson,.json" data-slot="barangay"/>
+          </div>
+          <div class="uc-status" id="us-barangay">No file loaded &mdash; demo data will be used</div>
+        </div>
+
+        <div class="upload-card" id="uc-rice">
+          <div class="uc-label">
+            <span class="uc-badge required-badge">Required</span>
+            <span class="uc-title">&#x1F33E; Rice Farmers CSV</span>
+          </div>
+          <div class="uc-sub">One row per barangay with rice farmer count</div>
+          <div class="drop-zone" id="dz-rice" data-slot="rice">
+            <div class="dz-icon">&#x1F4CA;</div>
+            <div class="dz-text">Drag &amp; drop CSV here<br><span>or click to browse</span></div>
+            <div class="dz-formats">Accepted: .csv</div>
+            <input type="file" class="dz-input" id="fi-rice" accept=".csv,.txt" data-slot="rice"/>
+          </div>
+          <div class="uc-status" id="us-rice">No file loaded &mdash; demo data will be used</div>
+        </div>
+
+        <div class="upload-card" id="uc-corn">
+          <div class="uc-label">
+            <span class="uc-badge required-badge">Required</span>
+            <span class="uc-title">&#x1F33D; Corn Farmers CSV</span>
+          </div>
+          <div class="uc-sub">One row per barangay with corn farmer count</div>
+          <div class="drop-zone" id="dz-corn" data-slot="corn">
+            <div class="dz-icon">&#x1F4CA;</div>
+            <div class="dz-text">Drag &amp; drop CSV here<br><span>or click to browse</span></div>
+            <div class="dz-formats">Accepted: .csv</div>
+            <input type="file" class="dz-input" id="fi-corn" accept=".csv,.txt" data-slot="corn"/>
+          </div>
+          <div class="uc-status" id="us-corn">No file loaded &mdash; demo data will be used</div>
+        </div>
+
+        <div class="upload-card optional-card" id="uc-municipality">
+          <div class="uc-label">
+            <span class="uc-badge optional-badge">Optional</span>
+            <span class="uc-title">&#x1F3D9;&#xFE0F; Municipality Boundaries</span>
+          </div>
+          <div class="uc-sub">GeoJSON of municipality/city polygons for cleaner summary view</div>
+          <div class="drop-zone" id="dz-municipality" data-slot="municipality">
+            <div class="dz-icon">&#x1F4C4;</div>
+            <div class="dz-text">Drag &amp; drop GeoJSON here<br><span>or click to browse</span></div>
+            <div class="dz-formats">Accepted: .geojson .json</div>
+            <input type="file" class="dz-input" id="fi-municipality" accept=".geojson,.json" data-slot="municipality"/>
+          </div>
+          <div class="uc-status" id="us-municipality">Optional &mdash; auto-generated from barangays if not provided</div>
+        </div>
+
+        <div class="upload-card optional-card" id="uc-province">
+          <div class="uc-label">
+            <span class="uc-badge optional-badge">Optional</span>
+            <span class="uc-title">&#x1F3DB;&#xFE0F; Province Boundaries</span>
+          </div>
+          <div class="uc-sub">GeoJSON of province polygons for cleaner provincial view</div>
+          <div class="drop-zone" id="dz-province" data-slot="province">
+            <div class="dz-icon">&#x1F4C4;</div>
+            <div class="dz-text">Drag &amp; drop GeoJSON here<br><span>or click to browse</span></div>
+            <div class="dz-formats">Accepted: .geojson .json</div>
+            <input type="file" class="dz-input" id="fi-province" accept=".geojson,.json" data-slot="province"/>
+          </div>
+          <div class="uc-status" id="us-province">Optional &mdash; auto-generated from barangays if not provided</div>
+        </div>
+
+      </div>
+
+      <div class="modal-tip">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+        All files are processed <strong>entirely within your browser</strong>. No data is sent to any external server. GeoJSON files must be in <strong>WGS 84 / EPSG:4326</strong>.
+      </div>
+    </div>
+
+    <!-- TAB 2: FIELD MAPPING -->
+    <div class="modal-tab-body hidden" id="fields-tab">
+      <div class="fields-section">
+        <div class="fs-title">&#x1F3D8;&#xFE0F; Barangay GeoJSON Property Names</div>
+        <div class="fs-sub">Enter the exact property/attribute names from your GeoJSON file.</div>
+        <div class="fields-grid">
+          <div class="fg-row"><label>PSGC / Barangay Code</label><input type="text" id="fld-geo-code" placeholder="e.g. ADM4_PCODE" value="ADM4_PCODE"/><span class="fg-hint">Preferred join key — most accurate matching.</span></div>
+          <div class="fg-row"><label>Barangay Name <span class="req">*</span></label><input type="text" id="fld-geo-brgy" placeholder="e.g. ADM4_EN" value="ADM4_EN"/></div>
+          <div class="fg-row"><label>Municipality / City <span class="req">*</span></label><input type="text" id="fld-geo-mun" placeholder="e.g. ADM3_EN" value="ADM3_EN"/></div>
+          <div class="fg-row"><label>Province Name <span class="req">*</span></label><input type="text" id="fld-geo-prov" placeholder="e.g. ADM2_EN" value="ADM2_EN"/></div>
+          <div class="fg-row"><label>Region Name</label><input type="text" id="fld-geo-reg" placeholder="e.g. ADM1_EN" value="ADM1_EN"/></div>
+        </div>
+        <button class="btn-autodetect" id="autodetect-geo-btn">&#x1F50D; Auto-detect from GeoJSON</button>
+        <div class="autodetect-result" id="autodetect-geo-result"></div>
+      </div>
+
+      <div class="fields-section">
+        <div class="fs-title">&#x1F33E; Rice Farmers CSV Column Names</div>
+        <div class="fields-grid">
+          <div class="fg-row"><label>PSGC / Code Column</label><input type="text" id="fld-rice-code" placeholder="e.g. ADM4_PCODE" value="ADM4_PCODE"/><span class="fg-hint">Must match GeoJSON code field.</span></div>
+          <div class="fg-row"><label>Barangay Name Column</label><input type="text" id="fld-rice-brgy" placeholder="e.g. brgy_name" value="brgy_name"/></div>
+          <div class="fg-row"><label>Municipality Column</label><input type="text" id="fld-rice-mun" placeholder="e.g. mun_name" value="mun_name"/></div>
+          <div class="fg-row"><label>Province Column</label><input type="text" id="fld-rice-prov" placeholder="e.g. prov_name" value="prov_name"/></div>
+          <div class="fg-row"><label>Rice Farmer Count <span class="req">*</span></label><input type="text" id="fld-rice-count" placeholder="e.g. rice_farmers" value="rice_farmers"/></div>
+        </div>
+        <button class="btn-autodetect" id="autodetect-rice-btn">&#x1F50D; Auto-detect from Rice CSV</button>
+        <div class="autodetect-result" id="autodetect-rice-result"></div>
+      </div>
+
+      <div class="fields-section">
+        <div class="fs-title">&#x1F33D; Corn Farmers CSV Column Names</div>
+        <div class="fields-grid">
+          <div class="fg-row"><label>PSGC / Code Column</label><input type="text" id="fld-corn-code" placeholder="e.g. ADM4_PCODE" value="ADM4_PCODE"/></div>
+          <div class="fg-row"><label>Barangay Name Column</label><input type="text" id="fld-corn-brgy" placeholder="e.g. brgy_name" value="brgy_name"/></div>
+          <div class="fg-row"><label>Municipality Column</label><input type="text" id="fld-corn-mun" placeholder="e.g. mun_name" value="mun_name"/></div>
+          <div class="fg-row"><label>Province Column</label><input type="text" id="fld-corn-prov" placeholder="e.g. prov_name" value="prov_name"/></div>
+          <div class="fg-row"><label>Corn Farmer Count <span class="req">*</span></label><input type="text" id="fld-corn-count" placeholder="e.g. corn_farmers" value="corn_farmers"/></div>
+        </div>
+        <button class="btn-autodetect" id="autodetect-corn-btn">&#x1F50D; Auto-detect from Corn CSV</button>
+        <div class="autodetect-result" id="autodetect-corn-result"></div>
+      </div>
+    </div>
+
+    <!-- TAB 3: STATUS -->
+    <div class="modal-tab-body hidden" id="status-tab">
+      <div class="upload-status-panel">
+        <div class="usp-row"><span class="usp-key">&#x1F3D8;&#xFE0F; Barangay GeoJSON</span><span class="usp-val" id="stat-barangay">Not loaded</span></div>
+        <div class="usp-row"><span class="usp-key">&#x1F33E; Rice CSV</span><span class="usp-val" id="stat-rice">Not loaded</span></div>
+        <div class="usp-row"><span class="usp-key">&#x1F33D; Corn CSV</span><span class="usp-val" id="stat-corn">Not loaded</span></div>
+        <div class="usp-row"><span class="usp-key">&#x1F3D9;&#xFE0F; Municipality GeoJSON</span><span class="usp-val" id="stat-municipality">Not loaded (optional)</span></div>
+        <div class="usp-row"><span class="usp-key">&#x1F3DB;&#xFE0F; Province GeoJSON</span><span class="usp-val" id="stat-province">Not loaded (optional)</span></div>
+        <hr style="margin:12px 0;border:none;border-top:1px solid #e8eaed"/>
+        <div class="usp-row"><span class="usp-key">Barangay polygons</span><span class="usp-val" id="stat-polygons">&#x2014;</span></div>
+        <div class="usp-row"><span class="usp-key">Rice records</span><span class="usp-val" id="stat-rice-rows">&#x2014;</span></div>
+        <div class="usp-row"><span class="usp-key">Corn records</span><span class="usp-val" id="stat-corn-rows">&#x2014;</span></div>
+        <div class="usp-row"><span class="usp-key">Rice CSV columns</span><span class="usp-val small-text" id="stat-rice-cols">&#x2014;</span></div>
+        <div class="usp-row"><span class="usp-key">Corn CSV columns</span><span class="usp-val small-text" id="stat-corn-cols">&#x2014;</span></div>
+        <div class="usp-row"><span class="usp-key">GeoJSON properties</span><span class="usp-val small-text" id="stat-geo-cols">&#x2014;</span></div>
+      </div>
+    </div>
+
+    <div class="modal-footer">
+      <div class="mf-left">
+        <span id="modal-ready-badge" class="ready-badge not-ready">&#x26A0;&#xFE0F; Using demo data</span>
+      </div>
+      <div class="mf-right">
+        <button class="btn-modal-cancel" id="modal-use-demo">Use Demo Data</button>
+        <button class="btn-modal-apply" id="modal-apply-btn">&#x25B6; Apply &amp; Load Map</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== LOADING OVERLAY ===== -->
+<div id="loading-overlay">
+  <div class="loading-content">
+    <div class="loading-spinner"></div>
+    <div class="loading-title">Loading Agricultural Data</div>
+    <div class="loading-msg" id="loading-msg">Initializing map…</div>
+    <div class="loading-bar-wrap"><div class="loading-bar" id="loading-bar"></div></div>
+  </div>
+</div>
+
+<!-- ===== SCRIPTS ===== -->
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script src="script.js"></script>
+</body>
+</html>
