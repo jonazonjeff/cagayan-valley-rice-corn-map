@@ -9,46 +9,63 @@
 // SECTION 1: CONFIGURATION
 // ====================================================================
 const CONFIG = {
-  // --- FILE PATHS (edit these to match your actual filenames) ---
+  // --- FILE PATHS ---
   files: {
-    barangayGeoJSON:   'data/barangay_boundaries.geojson',
-    riceFarmersCSV:    'data/rice_farmers.csv',
-    cornFarmersCSV:    'data/corn_farmers.csv',
-    provinceBoundary:  'data/province_boundaries.geojson',  // optional
+    barangayGeoJSON:      'data/barangay_boundaries.geojson',
+    riceFarmersCSV:       'data/rice_farmers.csv',
+    cornFarmersCSV:       'data/corn_farmers.csv',
+    municipalBoundary:    'data/cagayan_valley_municipal_boundaries.geojson',
+    provinceBoundary:     'data/cagayan_valley_provincial_boundaries.geojson',
   },
 
-  // --- FIELD NAMES IN YOUR GEOJSON (edit to match your data) ---
+  // --- FIELD NAMES IN YOUR GEOJSON ---
+  // These match your actual barangay_boundaries.geojson properties exactly
   geoFields: {
-    code:         'PSGC',       // barangay PSGC code (preferred join key)
-    barangay:     'brgy_name',  // barangay name field
-    municipality: 'mun_name',   // municipality/city name field
-    province:     'prov_name',  // province name field
-    region:       'reg_name',   // region name field
+    code:         'ADM4_PCODE',  // PSGC code — primary join key
+    barangay:     'ADM4_EN',     // barangay name
+    municipality: 'ADM3_EN',     // municipality/city name
+    province:     'ADM2_EN',     // province name
+    region:       'ADM1_EN',     // region name
   },
 
   // --- FIELD NAMES IN YOUR RICE CSV ---
   riceFields: {
-    code:         'PSGC',        // match field (preferred) - leave blank to use name match
+    code:         'ADM4_PCODE',  // PSGC code — matches GeoJSON
     barangay:     'brgy_name',
     municipality: 'mun_name',
     province:     'prov_name',
-    count:        'rice_farmers', // numeric count field
+    count:        'rice_farmers',
   },
 
   // --- FIELD NAMES IN YOUR CORN CSV ---
   cornFields: {
-    code:         'PSGC',
+    code:         'ADM4_PCODE',  // PSGC code — matches GeoJSON
     barangay:     'brgy_name',
     municipality: 'mun_name',
     province:     'prov_name',
     count:        'corn_farmers',
   },
 
+  // --- MUNICIPAL BOUNDARY FIELDS ---
+  munGeoFields: {
+    code:         'ADM3_PCODE',
+    municipality: 'ADM3_EN',
+    province:     'ADM2_EN',
+    region:       'ADM1_EN',
+  },
+
+  // --- PROVINCIAL BOUNDARY FIELDS ---
+  provGeoFields: {
+    code:         'ADM2_PCODE',
+    province:     'ADM2_EN',
+    region:       'ADM1_EN',
+  },
+
   // --- DATA METADATA ---
   meta: {
-    lastUpdated:  '2024',        // update this
+    lastUpdated:  '2024',
     sourceOffice: 'DA-RFO II, Cagayan Valley',
-    region:       'Region II',
+    region:       'Region II (Cagayan Valley)',
   },
 
   // --- CLASSIFICATION THRESHOLDS (edit freely) ---
@@ -261,60 +278,9 @@ const Utils = {
 };
 
 // ====================================================================
-// SECTION 5: DATA LOADING
+// SECTION 5: DATA LOADING  (handled by main() below)
 // ====================================================================
-async function loadAllData() {
-  Utils.setLoadMsg('Loading barangay boundaries…', 10);
-  let geojson = null;
-  try {
-    const r = await fetch(CONFIG.files.barangayGeoJSON);
-    if (!r.ok) throw new Error('GeoJSON not found');
-    geojson = await r.json();
-    Utils.setLoadMsg(`Loaded ${geojson.features.length} barangay polygons.`, 35);
-  } catch(e) {
-    console.error('GeoJSON load failed:', e);
-    Utils.setLoadMsg('⚠️ GeoJSON not found. Loading demo data…', 35);
-    geojson = buildDemoGeoJSON();
-  }
-
-  Utils.setLoadMsg('Loading rice farm data…', 50);
-  let riceCsv = [], cornCsv = [];
-  try {
-    const r = await fetch(CONFIG.files.riceFarmersCSV);
-    if (r.ok) {
-      const txt = await r.text();
-      riceCsv = Papa.parse(txt, { header:true, skipEmptyLines:true }).data;
-    } else throw new Error('Rice CSV not found');
-  } catch(e) {
-    console.warn('Rice CSV not found, using demo data');
-    riceCsv = buildDemoRiceCSV(geojson);
-  }
-
-  Utils.setLoadMsg('Loading corn farm data…', 65);
-  try {
-    const r = await fetch(CONFIG.files.cornFarmersCSV);
-    if (r.ok) {
-      const txt = await r.text();
-      cornCsv = Papa.parse(txt, { header:true, skipEmptyLines:true }).data;
-    } else throw new Error('Corn CSV not found');
-  } catch(e) {
-    console.warn('Corn CSV not found, using demo data');
-    cornCsv = buildDemoCornCSV(geojson);
-  }
-
-  STATE.data.geojson = geojson;
-  STATE.data.riceCsv = riceCsv;
-  STATE.data.cornCsv = cornCsv;
-
-  Utils.setLoadMsg('Joining and validating data…', 80);
-  joinData();
-
-  Utils.setLoadMsg('Building summaries…', 90);
-  buildMunicipalSummary();
-  buildProvincialSummary();
-
-  Utils.setLoadMsg('Rendering map…', 95);
-}
+// Data is loaded directly in main(). This section intentionally empty.
 
 // ====================================================================
 // SECTION 6: DATA JOINING  (robust multi-pass matcher)
@@ -1323,13 +1289,73 @@ function renderRankedLayer(features, variable) {
 
 // ------- MUNICIPAL / PROVINCE DISSOLVE LAYERS -------
 function renderMunicipalLayer(style, variable) {
-  const munFeatures = buildDissolvedFeatures('municipality');
-  renderGenericLayer(munFeatures, style, variable, 'municipality');
+  // Use real municipal boundary GeoJSON if loaded, else dissolve from barangays
+  if (STATE.data.municipalityGeoJSON) {
+    const munFeatures = buildMunSummaryFeatures(STATE.data.municipalityGeoJSON);
+    renderGenericLayer(munFeatures, style, variable, 'municipality');
+  } else {
+    const munFeatures = buildDissolvedFeatures('municipality');
+    renderGenericLayer(munFeatures, style, variable, 'municipality');
+  }
 }
 
 function renderProvinceLayer(style, variable) {
-  const provFeatures = buildDissolvedFeatures('province');
-  renderGenericLayer(provFeatures, style, variable, 'province');
+  // Use real provincial boundary GeoJSON if loaded, else dissolve from barangays
+  if (STATE.data.provinceGeoJSON) {
+    const provFeatures = buildProvSummaryFeatures(STATE.data.provinceGeoJSON);
+    renderGenericLayer(provFeatures, style, variable, 'province');
+  } else {
+    const provFeatures = buildDissolvedFeatures('province');
+    renderGenericLayer(provFeatures, style, variable, 'province');
+  }
+}
+
+// Join aggregated municipal summary data onto real municipal boundary features
+function buildMunSummaryFeatures(munGeoJSON) {
+  const mf = CONFIG.munGeoFields;
+  return munGeoJSON.features.map(feat => {
+    const p = feat.properties;
+    const munNorm  = Utils.normalizeKey(p[mf.municipality] || '');
+    const provNorm = Utils.normalizeKey(p[mf.province]     || '');
+    const summary  = STATE.data.municipalSummary.find(m =>
+      Utils.normalizeKey(m._mun)  === munNorm &&
+      Utils.normalizeKey(m._prov) === provNorm
+    );
+    return {
+      ...feat,
+      properties: {
+        ...p,
+        ...(summary || {}),
+        _brgy: p[mf.municipality] || '',
+        _mun:  p[mf.municipality] || '',
+        _prov: p[mf.province]     || '',
+        _reg:  p[mf.region]       || '',
+      }
+    };
+  });
+}
+
+// Join aggregated provincial summary data onto real provincial boundary features
+function buildProvSummaryFeatures(provGeoJSON) {
+  const pf = CONFIG.provGeoFields;
+  return provGeoJSON.features.map(feat => {
+    const p = feat.properties;
+    const provNorm = Utils.normalizeKey(p[pf.province] || '');
+    const summary  = STATE.data.provinceSummary.find(ps =>
+      Utils.normalizeKey(ps._prov) === provNorm
+    );
+    return {
+      ...feat,
+      properties: {
+        ...p,
+        ...(summary || {}),
+        _brgy: p[pf.province] || '',
+        _mun:  '',
+        _prov: p[pf.province] || '',
+        _reg:  p[pf.region]   || '',
+      }
+    };
+  });
 }
 
 function buildDissolvedFeatures(level) {
@@ -2297,88 +2323,253 @@ function showToast(msg, type='ok', duration=4000) {
   toast._timer = setTimeout(() => toast.classList.remove('toast-visible'), duration);
 }
 
+// ── Auto-detect field names from actual file columns ──────────────────
+function autoDetectFields(geoProps, riceHeaders, cornHeaders) {
+  const probe = (headers, candidates) => {
+    const lower = headers.map(h => h.toLowerCase().trim());
+    for (const c of candidates) {
+      const exact = lower.indexOf(c.toLowerCase());
+      if (exact >= 0) return headers[exact];
+    }
+    for (const c of candidates) {
+      const partial = lower.findIndex(h => h.includes(c.toLowerCase()));
+      if (partial >= 0) return headers[partial];
+    }
+    return null;
+  };
+
+  // GeoJSON field detection
+  if (geoProps.length > 0) {
+    CONFIG.geoFields.code         = probe(geoProps, ['psgc','adm4_pcode','bgy_code','brgy_code','geo_code','code','id']) || CONFIG.geoFields.code;
+    CONFIG.geoFields.barangay     = probe(geoProps, ['brgy_name','bgy_name','barangay','brgy','adm4_en','name_4','name']) || CONFIG.geoFields.barangay;
+    CONFIG.geoFields.municipality = probe(geoProps, ['mun_name','mun','municipality','city','adm3_en','name_3','municipali']) || CONFIG.geoFields.municipality;
+    CONFIG.geoFields.province     = probe(geoProps, ['prov_name','province','prov','adm2_en','name_2']) || CONFIG.geoFields.province;
+    CONFIG.geoFields.region       = probe(geoProps, ['reg_name','region','reg','adm1_en','name_1']) || CONFIG.geoFields.region;
+    console.log('Auto-detected GeoJSON fields:', CONFIG.geoFields);
+  }
+
+  // Rice CSV field detection
+  if (riceHeaders.length > 0) {
+    CONFIG.riceFields.code         = probe(riceHeaders, ['psgc','adm4_pcode','bgy_code','brgy_code','code','id']) || CONFIG.riceFields.code;
+    CONFIG.riceFields.barangay     = probe(riceHeaders, ['brgy_name','bgy_name','barangay','brgy','name_4','adm4_en','name']) || CONFIG.riceFields.barangay;
+    CONFIG.riceFields.municipality = probe(riceHeaders, ['mun_name','mun','municipality','city','adm3_en','name_3','municipali']) || CONFIG.riceFields.municipality;
+    CONFIG.riceFields.province     = probe(riceHeaders, ['prov_name','province','prov','adm2_en','name_2']) || CONFIG.riceFields.province;
+    CONFIG.riceFields.count        = probe(riceHeaders, ['rice_farmers','rice_farms','rice_count','no_rice','rice','count_rice','ricecount','rice_no']) || CONFIG.riceFields.count;
+    console.log('Auto-detected Rice CSV fields:', CONFIG.riceFields);
+  }
+
+  // Corn CSV field detection
+  if (cornHeaders.length > 0) {
+    CONFIG.cornFields.code         = probe(cornHeaders, ['psgc','adm4_pcode','bgy_code','brgy_code','code','id']) || CONFIG.cornFields.code;
+    CONFIG.cornFields.barangay     = probe(cornHeaders, ['brgy_name','bgy_name','barangay','brgy','name_4','adm4_en','name']) || CONFIG.cornFields.barangay;
+    CONFIG.cornFields.municipality = probe(cornHeaders, ['mun_name','mun','municipality','city','adm3_en','name_3','municipali']) || CONFIG.cornFields.municipality;
+    CONFIG.cornFields.province     = probe(cornHeaders, ['prov_name','province','prov','adm2_en','name_2']) || CONFIG.cornFields.province;
+    CONFIG.cornFields.count        = probe(cornHeaders, ['corn_farmers','corn_farms','corn_count','no_corn','corn','count_corn','corncount','corn_no']) || CONFIG.cornFields.count;
+    console.log('Auto-detected Corn CSV fields:', CONFIG.cornFields);
+  }
+}
+
+// ── Validate that detected field names actually exist in the data ──────
+function validateFields(geoProps, riceHeaders, cornHeaders) {
+  const issues = [];
+  const gf = CONFIG.geoFields, rf = CONFIG.riceFields, cf = CONFIG.cornFields;
+
+  if (geoProps.length) {
+    if (!geoProps.includes(gf.barangay))     issues.push(`GeoJSON missing barangay field "${gf.barangay}". Available: ${geoProps.join(', ')}`);
+    if (!geoProps.includes(gf.municipality)) issues.push(`GeoJSON missing municipality field "${gf.municipality}". Available: ${geoProps.join(', ')}`);
+    if (!geoProps.includes(gf.province))     issues.push(`GeoJSON missing province field "${gf.province}". Available: ${geoProps.join(', ')}`);
+  }
+  if (riceHeaders.length) {
+    if (!riceHeaders.includes(rf.count))     issues.push(`Rice CSV missing count field "${rf.count}". Available: ${riceHeaders.join(', ')}`);
+    if (!riceHeaders.includes(rf.barangay))  issues.push(`Rice CSV missing barangay field "${rf.barangay}". Available: ${riceHeaders.join(', ')}`);
+  }
+  if (cornHeaders.length) {
+    if (!cornHeaders.includes(cf.count))     issues.push(`Corn CSV missing count field "${cf.count}". Available: ${cornHeaders.join(', ')}`);
+    if (!cornHeaders.includes(cf.barangay))  issues.push(`Corn CSV missing barangay field "${cf.barangay}". Available: ${cornHeaders.join(', ')}`);
+  }
+  return issues;
+}
+
+// ── Show a visible error screen (not just console) ──────────────────────
+function showStartupError(title, lines) {
+  const ov = document.getElementById('loading-overlay');
+  if (!ov) return;
+  ov.innerHTML = `
+    <div style="max-width:640px;padding:32px;background:#fff;border-radius:14px;box-shadow:0 8px 40px rgba(0,0,0,0.3);font-family:'IBM Plex Sans',sans-serif">
+      <div style="font-size:22px;font-weight:700;color:#c0392b;margin-bottom:12px">⚠️ ${title}</div>
+      <div style="font-size:13px;line-height:1.8;color:#333">
+        ${lines.map(l => `<div style="padding:4px 0;border-bottom:1px solid #f0f0f0">${l}</div>`).join('')}
+      </div>
+      <div style="margin-top:20px;font-size:12px;color:#888;background:#f8f8f8;padding:12px;border-radius:8px;font-family:'IBM Plex Mono',monospace">
+        Edit CONFIG in script.js to match your actual column/field names, then re-deploy.
+      </div>
+      <button onclick="document.getElementById('loading-overlay').classList.add('hidden')"
+        style="margin-top:16px;background:#1a6e3c;color:white;border:none;border-radius:7px;padding:9px 22px;font-size:13px;font-weight:700;cursor:pointer">
+        Continue with available data anyway
+      </button>
+    </div>`;
+  ov.style.background = 'rgba(10,25,47,0.85)';
+  ov.classList.remove('hidden');
+}
+
 async function main() {
   try {
     Utils.setLoadMsg('Initializing map…', 5);
-
     initMap();
     setupCollapsibles();
     setupEventListeners();
     setupSearch();
 
+    // ── 1. Load GeoJSON ──────────────────────────────────────────────
     Utils.setLoadMsg('Loading barangay boundaries…', 15);
-
-    // ── Load GeoJSON ──
+    let usingDemoGeo = false;
     try {
       const r = await fetch(CONFIG.files.barangayGeoJSON);
-      if (!r.ok) throw new Error('not found');
-      STATE.data.geojson = await r.json();
-      Utils.setLoadMsg(`Loaded ${STATE.data.geojson.features.length.toLocaleString()} barangay polygons`, 35);
+      if (!r.ok) throw new Error(`HTTP ${r.status} — file not found at: ${CONFIG.files.barangayGeoJSON}`);
+      const raw = await r.text();
+      try {
+        STATE.data.geojson = JSON.parse(raw);
+      } catch(parseErr) {
+        throw new Error(`GeoJSON parse error: ${parseErr.message}. Check file is valid JSON.`);
+      }
+      if (!STATE.data.geojson.features) throw new Error('GeoJSON has no "features" array. Check file format.');
+      console.log(`✅ GeoJSON loaded: ${STATE.data.geojson.features.length} features`);
+      console.log('Sample GeoJSON properties:', Object.keys(STATE.data.geojson.features[0]?.properties || {}));
+      Utils.setLoadMsg(`✅ ${STATE.data.geojson.features.length.toLocaleString()} barangay polygons loaded`, 35);
     } catch(e) {
-      console.warn('barangay_boundaries.geojson not found — using demo data');
+      console.error('❌ GeoJSON load failed:', e.message);
+      usingDemoGeo = true;
       STATE.data.geojson = buildDemoGeoJSON();
-      Utils.setLoadMsg('Using demo boundary data', 35);
+      Utils.setLoadMsg('⚠️ Using demo boundary data — ' + e.message, 35);
     }
 
-    // ── Load Rice CSV ──
-    Utils.setLoadMsg('Loading rice farm data…', 50);
+    // ── 2. Load Rice CSV ─────────────────────────────────────────────
+    Utils.setLoadMsg('Loading rice farm data…', 45);
+    let usingDemoRice = false;
     try {
       const r = await fetch(CONFIG.files.riceFarmersCSV);
-      if (!r.ok) throw new Error('not found');
+      if (!r.ok) throw new Error(`HTTP ${r.status} — file not found at: ${CONFIG.files.riceFarmersCSV}`);
       const txt = await r.text();
-      STATE.data.riceCsv = Papa.parse(txt, { header: true, skipEmptyLines: true }).data;
-      Utils.setLoadMsg(`Loaded ${STATE.data.riceCsv.length.toLocaleString()} rice records`, 60);
+      const cleanTxt = txt.replace(/^﻿/, '');
+      const parsed = Papa.parse(cleanTxt, { header: true, skipEmptyLines: true, transformHeader: h => h.trim() });
+      if (parsed.errors.length) console.warn('Rice CSV parse warnings:', parsed.errors.slice(0,3));
+      STATE.data.riceCsv = parsed.data;
+      console.log(`✅ Rice CSV loaded: ${STATE.data.riceCsv.length} rows`);
+      console.log('Rice CSV columns:', parsed.meta.fields);
+      console.log('Rice CSV sample row:', STATE.data.riceCsv[0]);
+      Utils.setLoadMsg(`✅ ${STATE.data.riceCsv.length.toLocaleString()} rice records loaded`, 58);
     } catch(e) {
-      console.warn('rice_farmers.csv not found — using demo data');
+      console.error('❌ Rice CSV load failed:', e.message);
+      usingDemoRice = true;
       STATE.data.riceCsv = buildDemoRiceCSV(STATE.data.geojson);
+      Utils.setLoadMsg('⚠️ Using demo rice data — ' + e.message, 58);
     }
 
-    // ── Load Corn CSV ──
-    Utils.setLoadMsg('Loading corn farm data…', 65);
+    // ── 3. Load Corn CSV ─────────────────────────────────────────────
+    Utils.setLoadMsg('Loading corn farm data…', 62);
+    let usingDemoCorn = false;
     try {
       const r = await fetch(CONFIG.files.cornFarmersCSV);
-      if (!r.ok) throw new Error('not found');
+      if (!r.ok) throw new Error(`HTTP ${r.status} — file not found at: ${CONFIG.files.cornFarmersCSV}`);
       const txt = await r.text();
-      STATE.data.cornCsv = Papa.parse(txt, { header: true, skipEmptyLines: true }).data;
-      Utils.setLoadMsg(`Loaded ${STATE.data.cornCsv.length.toLocaleString()} corn records`, 72);
+      const parsed = Papa.parse(txt, { header: true, skipEmptyLines: true, transformHeader: h => h.trim() });
+      if (parsed.errors.length) console.warn('Corn CSV parse warnings:', parsed.errors.slice(0,3));
+      STATE.data.cornCsv = parsed.data;
+      console.log(`✅ Corn CSV loaded: ${STATE.data.cornCsv.length} rows`);
+      console.log('Corn CSV columns:', parsed.meta.fields);
+      console.log('Corn CSV sample row:', STATE.data.cornCsv[0]);
+      Utils.setLoadMsg(`✅ ${STATE.data.cornCsv.length.toLocaleString()} corn records loaded`, 72);
     } catch(e) {
-      console.warn('corn_farmers.csv not found — using demo data');
+      console.error('❌ Corn CSV load failed:', e.message);
+      usingDemoCorn = true;
       STATE.data.cornCsv = buildDemoCornCSV(STATE.data.geojson);
+      Utils.setLoadMsg('⚠️ Using demo corn data — ' + e.message, 72);
     }
 
-    // ── Join & Process ──
-    Utils.setLoadMsg('Joining and validating data…', 78);
+    // ── 4. Auto-detect field names from actual data ──────────────────
+    const geoProps    = Object.keys(STATE.data.geojson.features[0]?.properties || {});
+    const riceHeaders = STATE.data.riceCsv.length  > 0 ? Object.keys(STATE.data.riceCsv[0])  : [];
+    const cornHeaders = STATE.data.cornCsv.length  > 0 ? Object.keys(STATE.data.cornCsv[0])  : [];
+
+    console.log('--- Field detection ---');
+    console.log('GeoJSON props available:', geoProps);
+    console.log('Rice CSV columns available:', riceHeaders);
+    console.log('Corn CSV columns available:', cornHeaders);
+
+    // Run auto-detection only when using real data (not demo)
+    if (!usingDemoGeo || !usingDemoRice || !usingDemoCorn) {
+      autoDetectFields(
+        usingDemoGeo  ? [] : geoProps,
+        usingDemoRice ? [] : riceHeaders,
+        usingDemoCorn ? [] : cornHeaders
+      );
+    }
+
+    // Validate detected fields
+    const fieldIssues = validateFields(
+      usingDemoGeo  ? [] : geoProps,
+      usingDemoRice ? [] : riceHeaders,
+      usingDemoCorn ? [] : cornHeaders
+    );
+
+    if (fieldIssues.length > 0) {
+      console.error('❌ FIELD MISMATCH DETECTED:', fieldIssues);
+      showStartupError(
+        'Field name mismatch — data may not join correctly',
+        fieldIssues
+      );
+      // Give user time to read, then continue anyway
+      await new Promise(r => setTimeout(r, 500));
+    }
+
+    // ── 5. Join & validate ───────────────────────────────────────────
+    Utils.setLoadMsg('Joining farm data to barangay boundaries…', 78);
     joinData();
 
-    Utils.setLoadMsg('Building municipal and provincial summaries…', 88);
+    // Log join result prominently
+    const v = STATE.data.validation;
+    console.log('--- JOIN RESULTS ---');
+    console.log(`Polygons: ${v.polygons} | Rice records: ${v.riceRecords} | Corn records: ${v.cornRecords}`);
+    console.log(`Joined both: ${v.joinedBoth} | Rice only: ${v.joinedRiceOnly} | Corn only: ${v.joinedCornOnly} | No match: ${v.noMatch}`);
+    console.log('Pass stats:', v.passStats);
+    if (v.unmatchedRice?.length) console.warn('Unmatched rice rows (first 5):', v.unmatchedRice.slice(0,5));
+    if (v.unmatchedCorn?.length) console.warn('Unmatched corn rows (first 5):', v.unmatchedCorn.slice(0,5));
+
+    // ── 6. Build summaries ───────────────────────────────────────────
+    Utils.setLoadMsg('Building summaries…', 88);
     buildMunicipalSummary();
     buildProvincialSummary();
 
+    // ── 7. Render ────────────────────────────────────────────────────
     Utils.setLoadMsg('Rendering map…', 95);
     populateFilters();
     renderMap();
 
     Utils.hideLoading();
-    document.getElementById('last-updated').textContent =
-      'Updated: ' + CONFIG.meta.lastUpdated;
+    document.getElementById('last-updated').textContent = 'Updated: ' + CONFIG.meta.lastUpdated;
 
-    // Join result toast
-    const val = STATE.data.validation;
-    const matchCount = (val.joinedBoth || 0) + (val.joinedRiceOnly || 0) + (val.joinedCornOnly || 0);
-    const pct = val.polygons > 0 ? Math.round(matchCount / val.polygons * 100) : 0;
-    if (pct < 50 && val.riceRecords > 0) {
-      showToast(`⚠️ Only ${pct}% of barangays matched farm data. Check the Data Validation panel.`, 'warn', 9000);
-    } else if (matchCount > 0) {
-      showToast(`✅ ${matchCount.toLocaleString()} barangays loaded (${pct}% match rate)`, 'ok', 4000);
+    // ── 8. Result toast ──────────────────────────────────────────────
+    const matchCount = (v.joinedBoth||0) + (v.joinedRiceOnly||0) + (v.joinedCornOnly||0);
+    const pct = v.polygons > 0 ? Math.round(matchCount / v.polygons * 100) : 0;
+
+    if (usingDemoGeo && usingDemoRice) {
+      showToast('⚠️ No data files found — showing demo data. Add your files to the data/ folder.', 'warn', 10000);
+    } else if (fieldIssues.length > 0) {
+      showToast(`⚠️ Field name issues detected — ${v.noMatch} barangays unmatched. See Data Validation panel.`, 'warn', 10000);
+    } else if (pct === 0 && v.riceRecords > 0) {
+      showToast(`❌ 0% match rate — check the Data Validation panel and browser console (F12) for details.`, 'err', 12000);
+    } else if (pct < 60) {
+      showToast(`⚠️ Only ${pct}% match rate (${matchCount.toLocaleString()} of ${v.polygons.toLocaleString()} barangays). Check Data Validation panel.`, 'warn', 9000);
+    } else {
+      showToast(`✅ ${matchCount.toLocaleString()} barangays joined (${pct}% match rate)`, 'ok', 5000);
     }
 
-    console.log('✅ Map ready.');
-    console.log('Joined:', STATE.data.joined.length, '| Municipalities:', STATE.data.municipalSummary.length, '| Provinces:', STATE.data.provinceSummary.length);
+    console.log(`✅ Map ready. ${matchCount}/${v.polygons} barangays matched (${pct}%)`);
 
   } catch(err) {
     console.error('Fatal map error:', err);
-    Utils.setLoadMsg('❌ ' + err.message, 100);
-    setTimeout(Utils.hideLoading, 5000);
+    Utils.setLoadMsg('❌ Fatal error: ' + err.message, 100);
+    showStartupError('Map failed to load', [err.message, 'Open browser console (F12) for full details.']);
   }
 }
 
